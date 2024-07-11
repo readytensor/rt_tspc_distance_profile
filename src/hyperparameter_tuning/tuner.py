@@ -6,9 +6,10 @@ import pandas as pd
 from config import paths
 from logger import get_logger
 from typing import Any, Callable, Dict
-from schema.data_schema import TSAnnotationSchema
+from schema.data_schema import TimeStepClassificationSchema
 from utils import read_json_as_dict, save_dataframe_as_csv
 from prediction.predictor_model import evaluate_predictor_model, train_predictor_model
+from prediction.predictor_model import InsufficientDataError
 
 
 HPT_RESULTS_FILE_NAME = "HPT_results.csv"
@@ -81,14 +82,14 @@ class HyperParameterTuner:
         self,
         train_split: pd.DataFrame,
         valid_split: pd.DataFrame,
-        data_schema: TSAnnotationSchema,
+        data_schema: TimeStepClassificationSchema,
     ) -> Dict[str, Any]:
         """Runs the hyperparameter tuning process.
 
         Args:
             train_splits (pd.DataFrame): Training data splits.
             valid_splits (pd.DataFrame): Validation data splits.
-            data_schema: (TSAnnotationSchema) Data schema.
+            data_schema: (TimeStepClassificationSchema) Data schema.
 
         Returns:
             A dictionary containing the best model name, hyperparameters, and score.
@@ -118,14 +119,14 @@ class HyperParameterTuner:
         self,
         train_split: pd.DataFrame,
         valid_split: pd.DataFrame,
-        data_schema: TSAnnotationSchema,
+        data_schema: TimeStepClassificationSchema,
     ) -> Callable:
         """Gets the objective function for hyperparameter tuning.
 
         Args:
             train_split (pd.DataFrame): Training data split.
             valid_split (pd.DataFrame): Validation data split.
-            data_schema (TSAnnotationSchema): Data schema.
+            data_schema (TimeStepClassificationSchema): Data schema.
 
         Returns:
             A callable objective function for hyperparameter tuning.
@@ -148,7 +149,12 @@ class HyperParameterTuner:
             )
 
             # evaluate the model
-            score = round(evaluate_predictor_model(classifier, valid_split), 6)
+            try:
+                score = round(evaluate_predictor_model(classifier, valid_split), 6)
+            except InsufficientDataError:
+                # If the model cannot be trained due to insufficient data, return a large "bad" value
+                return 1.0e6
+
             if np.isnan(score) or math.isinf(score):
                 # sometimes loss becomes inf/na, so use a large "bad" value
                 score = 1.0e6 if self.is_minimize else -1.0e6
@@ -218,7 +224,7 @@ class HyperParameterTuner:
 def tune_hyperparameters(
     train_split: pd.DataFrame,
     valid_split: pd.DataFrame,
-    data_schema: TSAnnotationSchema,
+    data_schema: TimeStepClassificationSchema,
     hpt_results_dir_path: str,
     is_minimize: bool = True,
     default_hyperparameters_file_path: str = paths.DEFAULT_HYPERPARAMETERS_FILE_PATH,
@@ -234,7 +240,7 @@ def tune_hyperparameters(
     Args:
         train_split (pd.DataFrame): Training data.
         valid_split (pd.DataFrame): Validation data.
-        data_schema (TSAnnotationSchema): Data schema.
+        data_schema (TimeStepClassificationSchema): Data schema.
         hpt_results_dir_path (str): Dir path to the hyperparameter tuning results file.
         is_minimize (bool, optional): Whether the metric should be minimized.
             Defaults to True.

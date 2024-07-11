@@ -92,8 +92,6 @@ def run_batch_predictions(
             logger.info("Making predictions...")
             predictions_arr = predict_with_model(predictor_model, validated_test_data)
 
-            # label_encoder = training_pipeline.named_steps["target_encoder"]
-
             logger.info("Creating final predictions dataframe...")
             predictions_df = create_predictions_dataframe(
                 pred_input=validated_test_data,
@@ -104,7 +102,6 @@ def run_batch_predictions(
             predictions_df = validate_predictions(
                 predictions_df,
                 data_schema,
-                len(validated_test_data),
             )
 
         logger.info("Saving predictions dataframe...")

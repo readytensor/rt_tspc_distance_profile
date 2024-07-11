@@ -1,6 +1,5 @@
 import os
 import warnings
-import sys
 import joblib
 import stumpy
 import numpy as np
@@ -8,8 +7,7 @@ import pandas as pd
 from sklearn.exceptions import NotFittedError
 from multiprocessing import cpu_count
 from sklearn.metrics import f1_score
-from schema.data_schema import TSAnnotationSchema
-from typing import Tuple
+from schema.data_schema import TimeStepClassificationSchema
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -23,26 +21,26 @@ n_jobs = max(1, n_cpus - 1)
 print(f"Using n_jobs = {n_jobs}")
 
 
-class TSAnnotator:
-    """Random Forest Timeseries Annotator.
+class TimeStepClassifier:
+    """Timeseries Step classifier.
 
     This class provides a consistent interface that can be used with other
-    TSAnnotator models.
+    TimeStepClassifier models.
     """
 
-    MODEL_NAME = "Random_Forest_Timeseries_Annotator"
+    MODEL_NAME = "Distance_Profile_Timeseries_classifier"
 
     def __init__(
         self,
-        data_schema: TSAnnotationSchema,
+        data_schema: TimeStepClassificationSchema,
         encode_len: int,
         **kwargs,
     ):
         """
-        Construct a new Random Forest TSAnnotator.
+        Construct a new Distance Profile TimeStepClassifier.
 
         Args:
-            data_schema (TSAnnotationSchema): The schema of the data.
+            data_schema (TimeStepClassificationSchema): The schema of the data.
             encode_len (int): Encoding (history) length.
         """
         self.data_schema = data_schema
@@ -127,8 +125,12 @@ class TSAnnotator:
             group, _, _ = self.normalize(group, mean, std)
 
             windowed_group = self.create_windows_for_prediction(group)
-            for window in windowed_group:
+            for i, window in enumerate(windowed_group):
                 if window.shape[0] < self.encode_len:
+                    if i == 0:
+                        raise InsufficientDataError(
+                            f"The length of the input data is less than the encode length. Input data length ({window.shape[0]}) < encode length ({self.encode_len})."
+                        )
 
                     last_pred = min_index + window.shape[0]
                     labels.extend(
@@ -157,7 +159,7 @@ class TSAnnotator:
         raise NotFittedError("Model is not fitted yet.")
 
     def save(self, model_dir_path: str) -> None:
-        """Save the Random Forest TSAnnotator to disk.
+        """Save the TimeStepClassifier to disk.
 
         Args:
             model_dir_path (str): Dir path to which to save the model.
@@ -167,13 +169,13 @@ class TSAnnotator:
         joblib.dump(self, os.path.join(model_dir_path, PREDICTOR_FILE_NAME))
 
     @classmethod
-    def load(cls, model_dir_path: str) -> "TSAnnotator":
-        """Load the Random Forest TSAnnotator from disk.
+    def load(cls, model_dir_path: str) -> "TimeStepClassifier":
+        """Load the TimeStepClassifier from disk.
 
         Args:
             model_dir_path (str): Dir path to the saved model.
         Returns:
-            TSAnnotator: A new instance of the loaded Random Forest TSAnnotator.
+            TimeStepClassifier: A new instance of the loaded TimeStepClassifier.
         """
         model = joblib.load(os.path.join(model_dir_path, PREDICTOR_FILE_NAME))
         return model
@@ -181,20 +183,21 @@ class TSAnnotator:
 
 def train_predictor_model(
     train_data: np.ndarray,
-    data_schema: TSAnnotationSchema,
+    data_schema: TimeStepClassificationSchema,
     hyperparameters: dict,
-) -> TSAnnotator:
+) -> TimeStepClassifier:
     """
-    Instantiate and train the TSAnnotator model.
+    Instantiate and train the TimeStepClassifier model.
 
     Args:
         train_data (np.ndarray): The train split from training data.
-        hyperparameters (dict): Hyperparameters for the TSAnnotator.
+        data_schema (TimeStepClassificationSchema): The schema of the data.
+        hyperparameters (dict): Hyperparameters for the TimeStepClassifier.
 
     Returns:
-        'TSAnnotator': The TSAnnotator model
+        'TimeStepClassifier': The TimeStepClassifier model
     """
-    model = TSAnnotator(
+    model = TimeStepClassifier(
         data_schema=data_schema,
         **hyperparameters,
     )
@@ -202,12 +205,12 @@ def train_predictor_model(
     return model
 
 
-def predict_with_model(model: TSAnnotator, test_data: np.ndarray) -> np.ndarray:
+def predict_with_model(model: TimeStepClassifier, test_data: np.ndarray) -> np.ndarray:
     """
-    Make forecast.
+    Predict the test data using the TimeStepClassifier model
 
     Args:
-        model (TSAnnotator): The TSAnnotator model.
+        model (TimeStepClassifier): The TimeStepClassifier model.
         test_data (np.ndarray): The test input data for annotation.
 
     Returns:
@@ -216,12 +219,12 @@ def predict_with_model(model: TSAnnotator, test_data: np.ndarray) -> np.ndarray:
     return model.predict(test_data)
 
 
-def save_predictor_model(model: TSAnnotator, predictor_dir_path: str) -> None:
+def save_predictor_model(model: TimeStepClassifier, predictor_dir_path: str) -> None:
     """
-    Save the TSAnnotator model to disk.
+    Save the TimeStepClassifier model to disk.
 
     Args:
-        model (TSAnnotator): The TSAnnotator model to save.
+        model (TimeStepClassifier): The TimeStepClassifier model to save.
         predictor_dir_path (str): Dir path to which to save the model.
     """
     if not os.path.exists(predictor_dir_path):
@@ -229,28 +232,34 @@ def save_predictor_model(model: TSAnnotator, predictor_dir_path: str) -> None:
     model.save(predictor_dir_path)
 
 
-def load_predictor_model(predictor_dir_path: str) -> TSAnnotator:
+def load_predictor_model(predictor_dir_path: str) -> TimeStepClassifier:
     """
-    Load the TSAnnotator model from disk.
+    Load the TimeStepClassifier model from disk.
 
     Args:
         predictor_dir_path (str): Dir path where model is saved.
 
     Returns:
-        TSAnnotator: A new instance of the loaded TSAnnotator model.
+        TimeStepClassifier: A new instance of the loaded TimeStepClassifier model.
     """
-    return TSAnnotator.load(predictor_dir_path)
+    return TimeStepClassifier.load(predictor_dir_path)
 
 
-def evaluate_predictor_model(model: TSAnnotator, test_split: np.ndarray) -> float:
+def evaluate_predictor_model(
+    model: TimeStepClassifier, test_split: np.ndarray
+) -> float:
     """
-    Evaluate the TSAnnotator model and return the r-squared value.
+    Evaluate the TimeStepClassifier model and return the f1-score value.
 
     Args:
-        model (TSAnnotator): The TSAnnotator model.
+        model (TimeStepClassifier): The TimeStepClassifier model.
         test_split (np.ndarray): Test data.
 
     Returns:
-        float: The r-squared value of the TSAnnotator model.
+        float: The f1-score value of the TimeStepClassifier model.
     """
     return model.evaluate(test_split)
+
+
+class InsufficientDataError(Exception):
+    """Raised when the data length is less that encode length"""
