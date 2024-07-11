@@ -5,6 +5,7 @@ from data_models.data_validator import validate_data
 from data_models.prediction_data_model import validate_predictions
 from logger import get_logger, log_error
 from prediction.predictor_model import load_predictor_model, predict_with_model
+from schema.data_schema import TimeStepClassificationSchema
 
 from schema.data_schema import load_saved_schema
 from utils import (
@@ -22,6 +23,7 @@ def create_predictions_dataframe(
     pred_input: pd.DataFrame,
     predictions_arr: np.ndarray,
     prediction_field_name: str,
+    data_schema: TimeStepClassificationSchema,
 ) -> pd.DataFrame:
     """
     Converts the predictions numpy array into a dataframe having the required structure.
@@ -30,12 +32,21 @@ def create_predictions_dataframe(
         pred_input (pd.DataFrame): Test data input.
         predictions_arr (np.ndarray): Forecast from forecasting model.
         prediction_field_name (str): Name of the column containing the predictions.
+        data_schema (TimeStepClassificationSchema): The schema of the data.
 
     Returns:
         Predictions as a pandas dataframe
     """
     predictions_df = pred_input.copy()
     predictions_df[prediction_field_name] = predictions_arr
+    predictions_df = predictions_df[
+        [data_schema.id_col, data_schema.time_col, prediction_field_name]
+    ]
+    one_hot = pd.get_dummies(predictions_df[prediction_field_name])
+    predictions_df = pd.concat([predictions_df, one_hot], axis=1)
+    for col in data_schema.target_classes:
+        if col not in predictions_df.columns:
+            predictions_df[col] = 0
     return predictions_df
 
 
@@ -97,6 +108,7 @@ def run_batch_predictions(
                 pred_input=validated_test_data,
                 predictions_arr=predictions_arr,
                 prediction_field_name=prediction_field_name,
+                data_schema=data_schema,
             )
 
             predictions_df = validate_predictions(
