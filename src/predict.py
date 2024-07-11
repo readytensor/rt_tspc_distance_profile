@@ -112,8 +112,6 @@ def run_batch_predictions(
                 data_schema=data_schema,
             )
 
-            print(predictions_df)
-
             predictions_df = validate_predictions(
                 predictions_df,
                 data_schema,
