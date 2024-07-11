@@ -44,8 +44,9 @@ def create_predictions_dataframe(
     ]
     one_hot = pd.get_dummies(predictions_df[prediction_field_name])
     predictions_df = pd.concat([predictions_df, one_hot], axis=1)
+    columns = [str(i) for i in predictions_df.columns.tolist()]
     for col in data_schema.target_classes:
-        if col not in predictions_df.columns:
+        if col not in columns:
             predictions_df[col] = 0
     return predictions_df
 
@@ -110,6 +111,8 @@ def run_batch_predictions(
                 prediction_field_name=prediction_field_name,
                 data_schema=data_schema,
             )
+
+            print(predictions_df)
 
             predictions_df = validate_predictions(
                 predictions_df,
