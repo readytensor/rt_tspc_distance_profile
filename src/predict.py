@@ -48,6 +48,7 @@ def create_predictions_dataframe(
     for col in data_schema.target_classes:
         if col not in columns:
             predictions_df[col] = 0
+        predictions_df[col] = predictions_df[col].astype(float)
     return predictions_df
 
 
