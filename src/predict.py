@@ -42,7 +42,7 @@ def create_predictions_dataframe(
     predictions_df = predictions_df[
         [data_schema.id_col, data_schema.time_col, prediction_field_name]
     ]
-    one_hot = pd.get_dummies(predictions_df[prediction_field_name])
+    one_hot = pd.get_dummies(predictions_df[prediction_field_name], dtype=float)
     predictions_df = pd.concat([predictions_df, one_hot], axis=1)
     columns = [str(i) for i in predictions_df.columns.tolist()]
     for col in data_schema.target_classes:
