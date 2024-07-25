@@ -7,6 +7,7 @@ from logger import get_logger, log_error
 from prediction.predictor_model import load_predictor_model, predict_with_model
 from schema.data_schema import TimeStepClassificationSchema
 
+from preprocessing.pipeline import load_pipeline, transform_data
 from schema.data_schema import load_saved_schema
 from utils import (
     read_csv_in_directory,
@@ -23,7 +24,8 @@ def create_predictions_dataframe(
     pred_input: pd.DataFrame,
     predictions_arr: np.ndarray,
     prediction_field_name: str,
-    data_schema: TimeStepClassificationSchema,
+    label_encoder: object,
+    data_schema: object,
 ) -> pd.DataFrame:
     """
     Converts the predictions numpy array into a dataframe having the required structure.
@@ -32,23 +34,21 @@ def create_predictions_dataframe(
         pred_input (pd.DataFrame): Test data input.
         predictions_arr (np.ndarray): Forecast from forecasting model.
         prediction_field_name (str): Name of the column containing the predictions.
-        data_schema (TimeStepClassificationSchema): The schema of the data.
+        label_encoder (object): Label encoder object.
+        data_schema (object): Data schema object.
 
     Returns:
         Predictions as a pandas dataframe
     """
     predictions_df = pred_input.copy()
-    predictions_df[prediction_field_name] = predictions_arr
+    label_to_int = label_encoder.encoders[data_schema.target]
+    class_names = list(label_to_int.keys())
+    predictions_df[class_names] = predictions_arr
+
     predictions_df = predictions_df[
-        [data_schema.id_col, data_schema.time_col, prediction_field_name]
+        [data_schema.id_col, data_schema.time_col] + class_names
     ]
-    one_hot = pd.get_dummies(predictions_df[prediction_field_name], dtype=float)
-    predictions_df = pd.concat([predictions_df, one_hot], axis=1)
-    columns = [str(i) for i in predictions_df.columns.tolist()]
-    for col in data_schema.target_classes:
-        if col not in columns:
-            predictions_df[col] = 0
-            predictions_df[col] = predictions_df[col].astype(float)
+    predictions_df[prediction_field_name] = predictions_df[class_names].idxmax(axis=1)
     return predictions_df
 
 
@@ -56,6 +56,7 @@ def run_batch_predictions(
     saved_schema_dir_path: str = paths.SAVED_SCHEMA_DIR_PATH,
     model_config_file_path: str = paths.MODEL_CONFIG_FILE_PATH,
     test_dir: str = paths.TEST_DIR,
+    preprocessing_dir_path: str = paths.PREPROCESSING_DIR_PATH,
     predictor_dir_path: str = paths.PREDICTOR_DIR_PATH,
     predictions_file_path: str = paths.PREDICTIONS_FILE_PATH,
 ) -> None:
@@ -73,6 +74,7 @@ def run_batch_predictions(
         saved_schema_dir_path (str): Dir path to the saved data schema.
         model_config_file_path (str): Path to the model configuration file.
         test_dir (str): Directory path for the test data.
+        preprocessing_dir_path (str): Path to the saved pipeline file.
         predictor_file_path (str): Path to the saved predictor model file.
         predictions_file_path (str): Path where the predictions file will be saved.
     """
@@ -98,18 +100,27 @@ def run_batch_predictions(
             validated_test_data = validate_data(
                 data=test_data, data_schema=data_schema, is_train=False
             )
+            # fit and transform using pipeline and target encoder, then save them
+            logger.info("Loading preprocessing pipeline ...")
+            pipeline = load_pipeline(preprocessing_dir_path)
+
+            logger.info("Preprocessing test data ...")
+            transformed_test_data = transform_data(pipeline, validated_test_data)
 
             logger.info("Loading predictor model...")
             predictor_model = load_predictor_model(predictor_dir_path)
 
             logger.info("Making predictions...")
-            predictions_arr = predict_with_model(predictor_model, validated_test_data)
+            predictions_arr = predict_with_model(predictor_model, transformed_test_data)
+
+            label_encoder = pipeline.named_steps["target_encoder"]
 
             logger.info("Creating final predictions dataframe...")
             predictions_df = create_predictions_dataframe(
                 pred_input=validated_test_data,
                 predictions_arr=predictions_arr,
                 prediction_field_name=prediction_field_name,
+                label_encoder=label_encoder,
                 data_schema=data_schema,
             )
 
