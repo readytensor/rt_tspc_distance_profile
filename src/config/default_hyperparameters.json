@@ -1,3 +1,5 @@
 {
-  "encode_len": 6
+  "window_length_factor": 5.0,
+  "num_neighbours": 8,
+  "scaler_type": "standard"
 }
