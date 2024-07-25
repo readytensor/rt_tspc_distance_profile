@@ -26,12 +26,11 @@ Here are the highlights of this implementation: <br/>
 
 The distance profile involves calculating the distance between a query subsequence and every subsequence in a time series. We employ the MASS (Mueen’s Algorithm for Similarity Search) algorithm to compute the distance profile. The algorithm has the following characteristics:
 
-- **Windows**: Each series in the test data is divided into windows.
-- Window length calculation is tunable parameter. It is calculated as a function of the minimum series length in the training data.
+- **Windows**: Each series in the test data is divided into windows. Window length calculation is tunable parameter. It is calculated as a function of the minimum series length in the training data.
 - **Strides**: We allow overlapping windows to be created - this is driven by a `stride` factor.
 - **Distance Profile**: For each window in the test data, we find the k-nearest neighbors sub-sequences in the training data. Neighbors are found by using the MASS algorithm. This involves use of the MASS algorithm which computes the Euclidean distance on z-normalized data for each feature. We sum the distances across all the features as the final distance measure.
 - **k-nearest neighbors**: Once the distance profile is calculated for each window in the test data, we find the k-nearest neighbors (windows) in the training data based on the calculated distances. For the neighbors, we extract their labels. Labels are one-hot encoded.
-- **Averaging labels**: A timestep in test data may occur in multiple windows, and we also have k-neighbors for each window, we average the labels across all the neighbors to get the final label for the timestep.
+- **Averaging labels**: A timestep in test data may occur in multiple windows, and we also have k-neighbors for each window, we average the labels across all the neighbors to get the final label probabilities for the timestep.
 
 ### Important Hyperparameters
 
