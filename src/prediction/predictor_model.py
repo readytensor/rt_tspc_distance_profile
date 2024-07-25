@@ -6,10 +6,9 @@ import numpy as np
 import pandas as pd
 from sklearn.exceptions import NotFittedError
 from sklearn.metrics import f1_score
-from schema.data_schema import TimeStepClassificationSchema
 from tqdm import tqdm
 
-
+from schema.data_schema import TimeStepClassificationSchema
 from logger import get_logger
 
 
@@ -71,16 +70,20 @@ class TimeStepClassifier:
                                 D is the number of dimensions.
 
         Returns:
-            np.ndarray: Windowed data of shape [L-window_length+1, window_length, D]
+            np.ndarray: Windowed data of shape
         """
         start_idx_list = []
         windows_list = []
+        seen_start_indices = set()
         for i in range(0, len(data), self.stride):
             start_idx = i
             if start_idx + self.window_length > len(data) - 1:
                 # last window runs out of space, so slide it in to fit
                 start_idx = len(data) - self.window_length
             start_idx_list.append(start_idx)
+            if start_idx in seen_start_indices:
+                continue  # Skip if the start_idx has already been processed            
+            seen_start_indices.add(start_idx)
             windows_list.append(data[start_idx : start_idx + self.window_length])
         return np.stack(windows_list, axis=0), start_idx_list
 
@@ -150,8 +153,8 @@ class TimeStepClassifier:
         self.train_data = train_data.sort_values(
             by=[self.data_schema.id_col, self.data_schema.time_col]
         )
-        grouped = train_data.groupby(self.data_schema.id_col).size()
-        min_row_count = grouped.min()
+        grouped = train_data.groupby(self.data_schema.id_col)
+        min_row_count = grouped.size().min()
         log_min_count = np.log2(min_row_count)
         self.window_length = int(log_min_count * self.window_length_factor)
         self.stride = self.window_length // 3
@@ -183,6 +186,8 @@ class TimeStepClassifier:
             ]
         ).to_numpy()
 
+        if self.data_schema.target in test_data.columns:
+            test_data = test_data.drop(self.data_schema.target)
         grouped = test_data.groupby(self.data_schema.id_col)
 
         id_cols = [self.data_schema.id_col, self.data_schema.time_col]
