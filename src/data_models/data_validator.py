@@ -45,7 +45,6 @@ def get_data_validator(
 
         @validator("data", allow_reuse=True)
         def validate_dataframe(cls, data):
-
             if schema.id_col not in data.columns:
                 raise ValueError(
                     f"ID field '{schema.id}' is not present in the given data"
