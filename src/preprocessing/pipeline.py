@@ -1,22 +1,21 @@
 import joblib
+import os
 import numpy as np
 import pandas as pd
-from typing import Any, Tuple, Dict
+from typing import Any, Tuple
 from sklearn.pipeline import Pipeline
 from preprocessing import custom_transformers as transformers
 
 
-TRAINING_PIPELINE_FILE_NAME = "training_pipeline.joblib"
-INFERENCE_PIPELINE_FILE_NAME = "inference_pipeline.joblib"
+PIPELINE_FILE_NAME = "pipeline.joblib"
 
 
 def create_preprocess_pipeline(
     data_schema: Any,
     scaler_type: str,
-) -> Tuple[Pipeline, Pipeline]:
+) -> Pipeline:
     """
-    Constructs two preprocessing pipeline for time-series data:
-        one for training and another inference.
+    Constructs preprocessing pipeline for time-series data.
 
     Args:
         data_schema: The schema of the data, containing information like column names.
@@ -24,7 +23,7 @@ def create_preprocess_pipeline(
         scaler (int): Scaler to use for normalizing features.
 
     Returns:
-        Tuple[Pipeline, Pipeline]: Tuple of training and inference pipelines
+        Pipeline: Preprocessing pipeline
     """
     # Steps for preprocessing pipeline
     steps = [
@@ -115,23 +114,26 @@ def transform_data(pipeline: Pipeline, input_data: pd.DataFrame) -> pd.DataFrame
     return pipeline.transform(input_data)
 
 
-def save_pipeline(pipeline: Pipeline, file_path_and_name: str) -> None:
+def save_pipeline(pipeline: Pipeline, save_dir: str) -> None:
     """Save the fitted pipeline to a pickle file.
 
     Args:
         pipeline (Pipeline): The fitted pipeline to be saved.
-        file_path_and_name (str): The path where the pipeline should be saved.
+        save_dir (str): The dir path where the pipeline should be saved.
     """
+    os.makedirs(save_dir, exist_ok=True)
+    file_path_and_name = os.path.join(save_dir, PIPELINE_FILE_NAME)
     joblib.dump(pipeline, file_path_and_name)
 
 
-def load_pipeline(file_path_and_name: str) -> Pipeline:
+def load_pipeline(save_dir: str) -> Pipeline:
     """Load the fitted pipeline from the given path.
 
     Args:
-        file_path_and_name: Path to the saved pipeline.
+        save_dir: Dir path to the saved pipeline.
 
     Returns:
         Fitted pipeline.
     """
+    file_path_and_name = os.path.join(save_dir, PIPELINE_FILE_NAME)
     return joblib.load(file_path_and_name)
