@@ -5,7 +5,11 @@ from prediction.predictor_model import (
     save_predictor_model,
     train_predictor_model,
 )
-
+from preprocessing.pipeline import (
+    create_preprocess_pipeline,
+    fit_transform_with_pipeline,
+    save_pipeline,
+)
 from schema.data_schema import load_json_data_schema, save_schema
 from utils import (
     train_test_split,
@@ -24,6 +28,7 @@ def run_training(
     saved_schema_dir_path: str = paths.SAVED_SCHEMA_DIR_PATH,
     model_config_file_path: str = paths.MODEL_CONFIG_FILE_PATH,
     train_dir: str = paths.TRAIN_DIR,
+    preprocessing_dir_path: str = paths.PREPROCESSING_DIR_PATH,
     predictor_dir_path: str = paths.PREDICTOR_DIR_PATH,
     default_hyperparameters_file_path: str = paths.DEFAULT_HYPERPARAMETERS_FILE_PATH,
     hpt_specs_file_path: str = paths.HPT_CONFIG_FILE_PATH,
@@ -81,6 +86,7 @@ def run_training(
                     validated_data,
                     test_split=model_config["validation_split"],
                     id_col=data_schema.id_col,
+                    time_col=data_schema.time_col,
                 )
 
                 tuned_hyperparameters = tune_hyperparameters(
@@ -94,13 +100,28 @@ def run_training(
                 )
 
                 hyperparameters.update(tuned_hyperparameters)
+                logger.info(f"Tuned hyperparameters: {hyperparameters}")
+
+            logger.info("Fitting preprocessing pipelines...")
+            preprocessing_pipeline = create_preprocess_pipeline(
+                data_schema=data_schema,
+                scaler_type=hyperparameters["scaler_type"],
+            )
+            preprocessing_pipeline, transformed_data = fit_transform_with_pipeline(
+                preprocessing_pipeline, validated_data
+            )
+            logger.info(f"Transformed data shape: {transformed_data.shape}")
 
             logger.info("Training classifier...")
             classifier = train_predictor_model(
-                train_data=validated_data,
+                train_data=transformed_data,
                 data_schema=data_schema,
                 hyperparameters=hyperparameters,
             )
+
+        # Save pipeline
+        logger.info("Saving pipeline...")
+        save_pipeline(preprocessing_pipeline, preprocessing_dir_path)
 
         # save predictor model
         logger.info("Saving classifier...")
