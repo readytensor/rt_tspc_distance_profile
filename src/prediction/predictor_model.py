@@ -5,20 +5,18 @@ import stumpy
 import numpy as np
 import pandas as pd
 from sklearn.exceptions import NotFittedError
-from multiprocessing import cpu_count
 from sklearn.metrics import f1_score
 from schema.data_schema import TimeStepClassificationSchema
 from tqdm import tqdm
 
+
+from logger import get_logger
+
+
+logger = get_logger(task_name=__file__)
+
 warnings.filterwarnings("ignore")
 PREDICTOR_FILE_NAME = "predictor.joblib"
-
-# Determine the number of CPUs available
-n_cpus = cpu_count()
-
-# Set n_jobs to be one less than the number of CPUs, with a minimum of 1
-n_jobs = max(1, n_cpus - 1)
-print(f"Using n_jobs = {n_jobs}")
 
 
 class TimeStepClassifier:
@@ -33,7 +31,8 @@ class TimeStepClassifier:
     def __init__(
         self,
         data_schema: TimeStepClassificationSchema,
-        encode_len: int,
+        window_length_factor: float = 4.0,
+        num_neighbours: int = 3,
         **kwargs,
     ):
         """
@@ -41,34 +40,49 @@ class TimeStepClassifier:
 
         Args:
             data_schema (TimeStepClassificationSchema): The schema of the data.
-            encode_len (int): Encoding (history) length.
+            window_length_factor (float): Factor used to adjust the base window length
+                                         derived from the logarithm of the minimum row
+                                         count per group.
+            num_neighbors (int): Number of neighbors in similarity matches.
         """
         self.data_schema = data_schema
-        self.encode_len = encode_len
-        self.kwargs = kwargs
+        self.window_length_factor = window_length_factor
+        self.num_neighbours = num_neighbours
         self._is_trained = False
+        self.train_data = None
+        self.window_length = None
+        self.stride = None
+        self._verify_params()
 
-    def create_windows_for_prediction(self, data: pd.DataFrame):
+    def _verify_params(self) -> None:
+        assert (
+            self.window_length_factor > 0
+        ), "Window length factor must be greater than 0."
+        assert self.num_neighbours > 0, "Number of neighbors must be greater than 0."
+
+    def create_windows_for_prediction(self, data: np.ndarray) -> np.ndarray:
         """
         Create windows for prediction.
 
         Args:
-            data (pd.DataFrame): The data to create windows for.
+            data (np.ndarray): The data to create windows for.
+                               Shape is (L, D)
+                                where L is the number of rows and
+                                D is the number of dimensions.
 
+        Returns:
+            np.ndarray: Windowed data of shape [L-window_length+1, window_length, D]
         """
-        windows = []
-        for i in range(0, len(data), self.encode_len):
-            windows.append(data[i : i + self.encode_len])
-
-        return windows
-
-    def normalize(self, data: np.ndarray, mean=None, std=None):
-        if mean is None and std is None:
-            mean = np.mean(data, axis=0)
-            std = np.std(data, axis=0)
-        normalized = (data - mean) / std
-
-        return normalized, mean, std
+        start_idx_list = []
+        windows_list = []
+        for i in range(0, len(data), self.stride):
+            start_idx = i
+            if start_idx + self.window_length > len(data) - 1:
+                # last window runs out of space, so slide it in to fit
+                start_idx = len(data) - self.window_length
+            start_idx_list.append(start_idx)
+            windows_list.append(data[start_idx : start_idx + self.window_length])
+        return np.stack(windows_list, axis=0), start_idx_list
 
     def multi_dimensional_mass(self, query_subsequence, time_series) -> np.ndarray:
         """
@@ -93,67 +107,152 @@ class TimeStepClassifier:
         return profile
 
     def fit(self, train_data):
-        self.train_data = train_data
+        """
+        Fits the model using the provided training data.
+
+        This method processes the training data by sorting it based on the
+        specified identifier and time columns. It then calculates the minimum
+        number of rows (`min_row_count`) for any unique identifier in the data, 
+        computes the base-2  logarithm of this minimum count, and multiplies it 
+        by a predefined factor (`window_length_factor`) to determine the window
+        length used in later computations. Additionally, it sets the stride length
+        to one-third of the window length and marks the model as trained.
+
+        `min_row_count` is calculated across all samples. It represents the minimum
+        series length in the training data. 
+
+        Args:
+            train_data (pd.DataFrame): The training data containing the columns
+                specified by `self.data_schema.id_col` and `self.data_schema.time_col`.
+
+        Attributes:
+            train_data (pd.DataFrame): The sorted training data stored for use during
+                                       inference.
+            window_length (int): The length of the window used for computing distance
+                                 profiles,derived from the logarithm of the minimum
+                                 row count per group.
+            stride (int): The stride length for moving the window across the data,
+                set to one-third of the window length.
+            _is_trained (bool): A flag indicating whether the model has been trained.
+
+        Examples:
+        - For a `min_row_count` of 8, a `window_length_factor` of 2 results in
+          a `window_length` of 6 (calculated as `int(log2(8) * 2)`).
+        - For a `min_row_count` of 32, a `window_length_factor` of 3 results in
+          a `window_length` of 15 (calculated as `int(log2(32) * 3)`).
+        - For a `min_row_count` of 100, a `window_length_factor` of 1.5 results in
+          a `window_length` of 9 (calculated as `int(log2(100) * 1.5)`).
+        
+        Raises:
+            ValueError: If the training data is missing required columns specified
+                by `self.data_schema`.
+        """
+        self.train_data = train_data.sort_values(
+            by=[self.data_schema.id_col, self.data_schema.time_col]
+        )
+        grouped = train_data.groupby(self.data_schema.id_col).size()
+        min_row_count = grouped.min()
+        log_min_count = np.log2(min_row_count)
+        self.window_length = int(log_min_count * self.window_length_factor)
+        self.stride = self.window_length // 3
+        logger.info(f"Calculated window length = {self.window_length}")
+        logger.info(f"Calculated stride = {self.stride}")
         self._is_trained = True
 
-    def predict(self, data: pd.DataFrame) -> np.ndarray:
-        labels = []
-        grouped = data.groupby(self.data_schema.id_col)
-        train_series_ids = set(
-            self.train_data[self.data_schema.id_col].unique().tolist()
-        )
-        for id, group in tqdm(grouped, desc="Generating predictions"):
-            series_to_be_searched = self.train_data
-            if id in train_series_ids:
-                series_to_be_searched = self.train_data[
-                    self.train_data[self.data_schema.id_col] == id
-                ]
+    def predict(self, test_data: pd.DataFrame) -> np.ndarray:
+        """Run predictions on test data
 
-            label_col = series_to_be_searched[self.data_schema.target]
-            series_to_be_searched = series_to_be_searched.drop(
-                columns=[
-                    self.data_schema.id_col,
-                    self.data_schema.time_col,
-                    self.data_schema.target,
-                ]
+        Args:
+            test_data (pd.DataFrame): Test dataframe
+                Must contain id_col, time_col and feature columns
+                as specified in self.data_schema
+
+        Returns:
+            np.ndarray: Array of predictions of shape [N, K] where
+                        N is number of rows in test_data and K
+                        is the number of target classes
+        """
+        window_length = self.window_length
+        series_to_be_searched = self.train_data  # training data
+        label_col = series_to_be_searched[self.data_schema.target]
+        series_to_be_searched = series_to_be_searched.drop(
+            columns=[
+                self.data_schema.id_col,
+                self.data_schema.time_col,
+                self.data_schema.target,
+            ]
+        ).to_numpy()
+
+        grouped = test_data.groupby(self.data_schema.id_col)
+
+        id_cols = [self.data_schema.id_col, self.data_schema.time_col]
+        encoded_target_cols = [
+            int(i) for i in range(len(self.data_schema.target_classes))
+        ]
+
+        all_preds = []
+        for id_, group in tqdm(grouped, desc="Generating predictions"):
+            # iterate over samples in test data
+            logger.info(f"Running predictions for id = {id_}")
+
+            group_arr = group.drop(
+                columns=[self.data_schema.id_col, self.data_schema.time_col]
             ).to_numpy()
 
-            group = group.drop(columns=[self.data_schema.id_col])
-            group = group.drop(columns=[self.data_schema.time_col]).to_numpy()
+            windowed_group, start_idx_list = self.create_windows_for_prediction(
+                group_arr
+            )
 
-            series_to_be_searched, mean, std = self.normalize(series_to_be_searched)
-            group, _, _ = self.normalize(group, mean, std)
-
-            windowed_group = self.create_windows_for_prediction(group)
             for i, window in enumerate(windowed_group):
-                if window.shape[0] < self.encode_len:
-                    if i == 0:
-                        raise InsufficientDataError(
-                            f"The length of the input data is less than the encode length. Input data length ({window.shape[0]}) < encode length ({self.encode_len})."
-                        )
-
-                    last_pred = min_index + window.shape[0]
-                    labels.extend(
-                        label_col.iloc[last_pred : last_pred + window.shape[0]]
-                    )
-                    break
-
                 distance_profile = self.multi_dimensional_mass(
                     window, series_to_be_searched
                 )
-                min_index = distance_profile.argmin()
-                labels.extend(label_col.iloc[min_index : min_index + window.shape[0]])
 
-        return np.array(labels)
+                # start and end indices of the window in the grouped data
+                start_idx = start_idx_list[i]
+                end_idx = start_idx + window_length
+
+                # Get the indices of the k smallest values in distance profile
+                indices_of_k_smallest = np.argsort(distance_profile)[
+                    : self.num_neighbours
+                ]
+                for _, idx in enumerate(indices_of_k_smallest):
+                    # Iterate over k neighbors
+
+                    # Create one-hot encoded predictions; first initialize to zeros
+                    pred_probs = np.zeros(
+                        (window_length, len(self.data_schema.target_classes))
+                    )
+                    # Get predicted target labels given this neighbor
+                    window_labels = label_col.iloc[idx : idx + window_length].values
+                    window_labels = window_labels.astype(np.int16)
+                    pred_probs[np.arange(pred_probs.shape[0]), window_labels] = 1.0
+                    # concatenate one-hot encoded predictions with id and time columns
+                    pred_probs = np.concat(
+                        [group.iloc[start_idx:end_idx][id_cols].values, pred_probs],
+                        axis=1,
+                    )
+                    all_preds.append(pred_probs)
+
+        # Create overall predictions dataframe containing all test samples
+        all_preds_df = pd.DataFrame(np.concat(all_preds, axis=0))
+        all_preds_df.columns = id_cols + encoded_target_cols
+
+        # Average by id and time columns since the same time idx can be repeated over
+        # many overlapping windows
+        averaged_preds = (
+            all_preds_df.groupby(id_cols)[encoded_target_cols].mean().reset_index()
+        )
+        return averaged_preds[encoded_target_cols].values
 
     def evaluate(self, test_data):
         """Evaluate the model and return the loss and metrics"""
-
         if self._is_trained:
             y_test = test_data[self.data_schema.target].to_numpy()
             test_data = test_data.drop(columns=[self.data_schema.target])
-            prediction = self.predict(test_data)
-            f1 = f1_score(y_test, prediction, average="weighted")
+            predictions = self.predict(test_data)
+            predictions = np.argmax(predictions, axis=1)
+            f1 = f1_score(y_test, predictions, average="weighted")
             return f1
 
         raise NotFittedError("Model is not fitted yet.")
