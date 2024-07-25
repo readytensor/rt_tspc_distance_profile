@@ -8,6 +8,11 @@ from logger import get_logger
 from typing import Any, Callable, Dict
 from schema.data_schema import TimeStepClassificationSchema
 from utils import read_json_as_dict, save_dataframe_as_csv
+from preprocessing.pipeline import (
+    create_preprocess_pipeline,
+    fit_transform_with_pipeline,
+    transform_data
+)
 from prediction.predictor_model import evaluate_predictor_model, train_predictor_model
 from prediction.predictor_model import InsufficientDataError
 
@@ -141,18 +146,30 @@ class HyperParameterTuner:
                 if k not in hyperparameters:
                     hyperparameters[k] = v
 
+            preprocessing_pipeline = create_preprocess_pipeline(
+                data_schema=data_schema,
+                scaler_type=hyperparameters["scaler_type"],
+            )
+            preprocessing_pipeline, transformed_train_data = fit_transform_with_pipeline(
+                preprocessing_pipeline, train_split
+            )
+            transformed_valid_data = transform_data(preprocessing_pipeline, valid_split)
+
             # train model
             classifier = train_predictor_model(
-                train_data=train_split,
+                train_data=transformed_train_data,
                 data_schema=data_schema,
                 hyperparameters=hyperparameters,
             )
 
             # evaluate the model
             try:
-                score = round(evaluate_predictor_model(classifier, valid_split), 6)
+                score = round(evaluate_predictor_model(
+                    classifier, transformed_valid_data
+                    ), 6)
             except InsufficientDataError:
-                # If the model cannot be trained due to insufficient data, return a large "bad" value
+                # If the model cannot be trained due to insufficient data,
+                # return a large "bad" value
                 return 1.0e6
 
             if np.isnan(score) or math.isinf(score):
