@@ -144,14 +144,16 @@ def set_seeds(seed_value: int) -> None:
 def train_test_split(
     data: pd.DataFrame,
     id_col: str,
+    time_col: str,
     test_split: float = 0.2,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Splits a numpy array into train and test sets along the first dimension.
+    Splits data into train and test sets along the first dimension.
 
     Args:
     data (pd.DataFrame): The input dataframe.
     id_col (str): The name of the column containing the IDs.
+    time_col (str): The name of the column containing the time values.
     test_split (float): Fraction of the dataset to be included in the test split. Default is 0.2.
 
     Returns:
@@ -164,6 +166,8 @@ def train_test_split(
     # Check if test_split value is valid
     if not 0 <= test_split <= 1:
         raise ValueError("test_split must be between 0 and 1")
+    
+    data = data.copy().sort_values(by=[id_col, time_col])
 
     n_series = data[id_col].nunique()
 
