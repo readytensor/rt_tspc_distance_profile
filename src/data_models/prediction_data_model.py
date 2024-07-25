@@ -41,7 +41,6 @@ def get_predictions_validator(schema: TimeStepClassificationSchema) -> BaseModel
 
         @validator("data", allow_reuse=True)
         def validate_dataframe(cls, data):
-
             # Check if DataFrame is empty
             if data.empty:
                 raise PredictionsValidationError(
