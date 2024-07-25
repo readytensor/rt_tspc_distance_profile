@@ -17,7 +17,7 @@ The following are the requirements for using your data with this model:
 
 Here are the highlights of this implementation: <br/>
 
-- A **Distance Profile Time Step Classifcation n** model built using `Stumpy` and `Scikit-Learn`.
+- A **Distance Profile Time Step Classifcation** model built using `Stumpy` and `Scikit-Learn`.
 - Additionally, the implementation contains the following features:
   - **Hyperparameter Tuning**: Hyperparameter Tuning is implemented using `Optuna`.
   - **Data Validation**: `Pydantic` data validation is used for the schema, training and test files, as well as the inference request data.
