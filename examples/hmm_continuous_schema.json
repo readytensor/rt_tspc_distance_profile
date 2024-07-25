@@ -1,0 +1,52 @@
+{
+  "title": "hmm_continuous",
+  "description": "This synthetic dataset is generated using a Hidden Markov Model (HMM) with continuous valued observations. Each sample in the dataset is a multivariate timeseries with a variable length. The dataset includes an identifier for each sample, a set of continuous observations for each timestep, and a corresponding state label for each timestep. The HMM Continuous Timeseries Dataset presents a challenging task for time step classification algorithms, where the goal is to accurately classify each timestep within the sequences based on the hidden states of the HMM. ",
+  "modelCategory": "time_step_classification",
+  "schemaVersion": 1.0,
+  "inputDataFormat": "CSV",
+  "encoding": "utf-8",
+  "frequency": "OTHER",
+  "idField": {
+    "name": "sample_id",
+    "description": "Unique sample id"
+  },
+  "timeField": {
+    "name": "timestep",
+    "description": "Time step as an integer",
+    "dataType": "INT",
+    "example": 0
+  },
+  "target": {
+    "name": "label",
+    "description": "Label for each time step in the sample",
+    "classes": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  "features": [
+    {
+      "name": "observation_dim_1",
+      "description": "Feature dimension 1",
+      "dataType": "NUMERIC",
+      "example": 0.3238,
+      "nullable": false
+    },
+    {
+      "name": "observation_dim_2",
+      "description": "Feature dimension 2",
+      "dataType": "NUMERIC",
+      "example": -1.1343,
+      "nullable": false
+    },
+    {
+      "name": "observation_dim_3",
+      "description": "Feature dimension 3",
+      "dataType": "NUMERIC",
+      "example": -0.9888,
+      "nullable": false
+    }
+  ]
+}
