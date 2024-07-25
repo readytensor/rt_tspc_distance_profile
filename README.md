@@ -1,6 +1,6 @@
-# Distance Profile Time Step Classifier in Scikit-Learn
+# Distance Profile Time Step Classifier
 
-Distance Profile Time Step Classifcation Model in Scikit-Learn as per Ready Tensor specifications.
+Distance Profile Time Step Classifcation Model as per Ready Tensor specifications.
 
 ## Project Description
 
@@ -17,7 +17,7 @@ The following are the requirements for using your data with this model:
 
 Here are the highlights of this implementation: <br/>
 
-- A **Distance Profile Time Step Classifcation n** model built using **Scikit-Learn**
+- A **Distance Profile Time Step Classifcation n** model built using **Stumpy** and **Scikit-Learn**
   Additionally, the implementation contains the following features:
 - **Data Validation**: Pydantic data validation is used for the schema, training and test files, as well as the inference request data.
 - **Error handling and logging**: Python's logging module is used for logging and key functions include exception handling.
