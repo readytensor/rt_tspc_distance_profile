@@ -13,7 +13,6 @@ The following are the requirements for using your data with this model:
 - The data type of the target field and feature(s) series must be NUMERIC.
 - The train and test (or prediction) files must contain an ID and Time fields. The train data must also contain a target series.
 - The data need to be preprocessed because the implementation assumes the data is cleaned and has no missing values.
-- ***
 
 Here are the highlights of this implementation: <br/>
 
